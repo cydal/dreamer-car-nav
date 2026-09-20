@@ -36,8 +36,8 @@ PANELS = [
      'lines'),
     ('Actor / critic', ['train/loss/policy', 'train/loss/value',
                         'train/loss/repval'], 'lines'),
-    ('Policy randomness (0 = deterministic, 1 = uniform)',
-     ['train/rand/action'], 'lines'),
+    ('Policy entropy and latent entropies',
+     ['train/ent/action', 'train/dyn_ent', 'train/rep_ent'], 'lines'),
     ('Throughput (steps / s)', ['fps/policy', 'fps/train'], 'lines'),
 ]
 
