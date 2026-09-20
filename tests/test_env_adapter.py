@@ -140,6 +140,17 @@ def test_red_light_log_is_per_step_not_cumulative():
   assert per_step.sum() == env.info['red_light_violations']
 
 
+def test_reward_scale_only_touches_the_agent_reward():
+  actions = fixed_actions(40, seed=7)
+  a = drive(CarNav('plain', seed=SEED), actions)
+  b = drive(CarNav('plain', seed=SEED, reward_scale=0.01), actions)
+  ra = np.array([o['reward'] for o in a]); rb = np.array([o['reward'] for o in b])
+  assert ra[0] == rb[0] == 0.0
+  np.testing.assert_allclose(rb, ra * 0.01, rtol=1e-5, atol=1e-7)
+  for k in ('log/dist_to_target', 'lidar'):
+    np.testing.assert_array_equal(a[-1][k], b[-1][k])
+
+
 # ------------------------------------------------------- reproducibility
 
 def test_same_seed_same_trajectory():

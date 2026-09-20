@@ -24,6 +24,7 @@ defaults:
     carnav:
       use_seed: True
       split_blocks: True
+      reward_scale: 1.0
       width: 48
       height: 48
       n_targets: 3

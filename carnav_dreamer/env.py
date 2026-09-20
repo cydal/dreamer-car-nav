@@ -33,6 +33,9 @@ reconstruction losses and metrics (`train/loss/lidar`, `train/loss/nav`, ...)
 for free -- which INTEGRATION.md's "Notes for world models" asks for, because
 32 LIDAR channels would otherwise drown the 7 traffic-light channels that
 carry the decision. `split_blocks=False` gives a single `vector` key.
+
+`reward_scale` multiplies the reward handed to the agent (default 1.0); it is
+the switch for the reward-scaling ablation and nothing else reads it.
 """
 
 import functools
@@ -55,12 +58,20 @@ class CarNav(embodied.Env):
       'success', 'waypoint', 'crash', 'red_light', 'stuck', 'timeout',
       'dist_to_target')
 
-  def __init__(self, task='plain', seed=None, split_blocks=True, **kwargs):
+  def __init__(self, task='plain', seed=None, split_blocks=True,
+               reward_scale=1.0, **kwargs):
     if task not in PRESETS:
       raise KeyError(f'unknown carnav task {task!r}; one of {sorted(PRESETS)}')
     settings = dict(PRESETS[task])
     settings.update(kwargs)
     self._env = carnav.make(obs_type='vector', seed=seed, **settings)
+    # Multiplies the reward the agent sees; the env's own bookkeeping
+    # (info['episode_reward'], the log/ scalars) is untouched. 1.0 is the
+    # default and the claim under test: DreamerV3's symlog two-hot heads and
+    # return normalisation should make scaling unnecessary. Set 0.01 to run
+    # the ablation. Same effect as rl-env3d's RewardOverrideWrapper with a
+    # multiplicative reward_fn, kept in the adapter so it is one config flag.
+    self._reward_scale = float(reward_scale)
     if split_blocks:
       self._blocks = {
           name: sl for name, sl in self._env.obs_slices.items()
@@ -116,7 +127,7 @@ class CarNav(embodied.Env):
     obs, reward, terminated, truncated, self._info = self._env.step(act)
     self._done = bool(terminated or truncated)
     return self._obs(
-        obs, reward, self._info,
+        obs, reward * self._reward_scale, self._info,
         is_last=self._done, is_terminal=bool(terminated))
 
   def _obs(self, vector, reward, info,

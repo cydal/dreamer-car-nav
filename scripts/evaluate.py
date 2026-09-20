@@ -95,7 +95,7 @@ def main():
   config = elements.Config.load(str(pathlib.Path(args.logdir) / 'config.yaml'))
   task = config.task.split('_', 1)[1]
   env_kwargs = dict(config.env.get('carnav', {}))
-  for k in ('use_seed', 'split_blocks'):
+  for k in ('use_seed', 'split_blocks', 'reward_scale'):
     env_kwargs.pop(k, None)
   env_kwargs.update(PRESETS[task])
   env_kwargs.setdefault('n_targets', 3)
