@@ -1,0 +1,5 @@
+# Remote NVIDIA machine. Same pins as requirements.txt plus the CUDA 12 plugin
+# and the env installed from GitHub at a fixed sha (no sibling checkout there).
+-r requirements.txt
+jax[cuda12]==0.4.33
+rl-env3d[gym] @ git+https://github.com/cydal/Car-Navigation-Env.git@3372e70

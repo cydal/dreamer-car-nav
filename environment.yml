@@ -1,0 +1,12 @@
+name: dreamer-carnav
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -r requirements.txt
+# Then, from the repo root, install the environment package editable:
+#   pip install -e "../rl-env3d[gym]"
+# On a CUDA machine use `pip install -r requirements-cuda.txt` instead of the
+# two steps above.

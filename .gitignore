@@ -1,0 +1,23 @@
+# Running documentation (dev log, learning notes) -- private until the article
+notes/
+
+# Upstream DreamerV3 clone, fetched at a pinned sha by scripts/fetch_upstream.sh
+# (it is a nested git repo; see UPSTREAM.md)
+dreamerv3/
+
+# Training outputs
+logdir/
+*.ckpt
+*.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

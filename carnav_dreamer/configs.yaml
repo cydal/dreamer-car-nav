@@ -1,0 +1,52 @@
+# Config blocks layered on top of upstream's dreamerv3/configs.yaml by
+# carnav_dreamer/train.py. Same mechanics as upstream: `defaults` is
+# deep-merged into upstream's defaults, every other block is a named override
+# selected with --configs, applied in the order given, and regex keys such as
+# `.*\.units` match every config path ending that way. Upstream's own blocks
+# (size1m, size12m, debug, ...) remain available, so a run is composed on the
+# command line, e.g.
+#
+#   python -m carnav_dreamer.train --configs carnav size12m --logdir logdir/{timestamp}
+#   python -m carnav_dreamer.train --configs carnav carnav_mac size1m --run.steps 3e5 ...
+#   python -m carnav_dreamer.train --configs carnav carnav_mac debug --run.steps 3000 ...
+
+defaults:
+  env:
+    # Constructor kwargs for carnav_dreamer.env.CarNav. `use_seed` is consumed
+    # by make_env (seed = hash((config.seed, env_index))) exactly as upstream
+    # does for DMLab; `split_blocks` is the adapter's own switch; everything
+    # else is forwarded to carnav.make. Upstream's flag parser only accepts
+    # keys that already exist, so every env knob you want to set from the
+    # command line has to be listed here (values are the env's own defaults).
+    # width/height are the map in tiles: 48x48 (192 m) is what rl-env3d's
+    # baseline table, figures and test_env use, so numbers here are comparable
+    # with the README's; the env's CityConfig default is 64x64.
+    carnav:
+      use_seed: True
+      split_blocks: True
+      width: 48
+      height: 48
+      n_targets: 3
+      max_episode_steps: 1000
+      action_repeat: 1
+      stuck_steps: 150
+      n_beams: 32
+      n_traffic: 8
+      n_parked: 18
+      lidar_noise: 0.0
+
+carnav:
+  task: carnav_plain
+  run:
+    envs: 8
+    train_ratio: 512     # gradient-steps-worth of replayed steps per env step; dmc_proprio uses 1024, crafter 512
+    steps: 2e6
+    log_every: 60
+    report_every: 300
+    save_every: 600
+
+# Apple-silicon development box: CPU JAX, float32 (bfloat16 is emulated and
+# slow on CPU), no memory preallocation, fewer envs. Pair with size1m.
+carnav_mac:
+  jax: {platform: cpu, compute_dtype: float32, prealloc: False}
+  run: {envs: 4, train_ratio: 256}

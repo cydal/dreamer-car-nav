@@ -1,0 +1,5 @@
+{
+  "module": "carnav_dreamer.agent",
+  "factory": "DreamerAgent",
+  "kwargs": {"logdir": "logdir/m2_plain_size1m"}
+}

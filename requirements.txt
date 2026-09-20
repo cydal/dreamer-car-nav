@@ -1,0 +1,32 @@
+# DreamerV3 core dependencies, trimmed from upstream requirements.txt
+# (danijar/dreamerv3 @ e3f0224). Dropped: ale_py, autorom, av, granular,
+# google-resumable-media, nvidia-cuda-nvcc-cu12, ipdb -- those serve Atari,
+# DMLab, Minecraft and video logging, none of which this project uses.
+#
+# CPU / macOS install. For NVIDIA, use requirements-cuda.txt instead.
+jax==0.4.33
+jaxlib==0.4.33
+chex
+einops
+elements>=3.19.1
+jaxtyping
+ninjax>=3.5.1
+numpy<2
+optax
+portal>=3.5.0
+scope>=0.4.4
+ruamel.yaml
+cloudpickle
+colored_traceback
+tqdm
+
+# Car navigation environment (../rl-env3d, GitHub: cydal/Car-Navigation-Env).
+# Locally we install it editable so the sibling checkout is the source of truth:
+#   pip install -e "../rl-env3d[gym]"
+# requirements-cuda.txt pins it to a git sha for remote machines.
+gymnasium>=0.29
+
+# Tests / tooling
+pytest
+matplotlib
+pandas

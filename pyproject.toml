@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "carnav-dreamer"
+version = "0.1.0"
+description = "DreamerV3 (reference JAX implementation) on the CarNav 3D car navigation environment"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+# Runtime dependencies are pinned in requirements.txt / requirements-cuda.txt;
+# the upstream `dreamerv3` and `embodied` packages come from
+# scripts/fetch_upstream.sh. This file exists so `pip install -e .` makes
+# `carnav_dreamer` importable from anywhere -- in particular from rl-env3d's
+# `main.py serve --agent configs/agents/dreamer.json`, which runs with the env
+# repo, not this one, as its script directory.
+dependencies = []
+
+[tool.setuptools]
+packages = ["carnav_dreamer"]
+
+[tool.setuptools.package-data]
+carnav_dreamer = ["configs.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
