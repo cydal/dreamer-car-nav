@@ -5,6 +5,10 @@ Training runs in a subprocess because JAX platform settings are per process
 and upstream's `internal.setup` applies them once; the restore-and-act half
 runs in-process. ~25 s on a laptop CPU. `log_every` is wall-clock seconds, so
 the run must outlive one tick for train metrics to be flushed.
+
+`--logger.outputs jsonl` overrides the project default (which includes
+`wandb`, see carnav_dreamer/configs.yaml) so this test never makes a network
+call or depends on a WANDB_API_KEY being configured.
 """
 
 import json
@@ -29,6 +33,7 @@ def tiny_logdir(tmp_path_factory):
       '--configs', 'carnav', 'carnav_mac', 'debug',
       '--run.steps', '1500', '--run.envs', '2', '--run.log_every', '1',
       '--env.carnav.max_episode_steps', '60',
+      '--logger.outputs', 'jsonl',
       '--logdir', str(logdir)]
   proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=600)
   assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-3000:]

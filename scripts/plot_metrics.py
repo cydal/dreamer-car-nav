@@ -7,6 +7,12 @@ value, ...}` written by upstream's JSONL logger: episode rows appear once per
 finished episode, train/epstats rows once per `log_every` seconds. Several
 logdirs on one figure make ablations (split_blocks on/off, reward scaling)
 directly comparable.
+
+wandb (see carnav_dreamer/configs.yaml, on by default) is the live/primary
+place to watch a run now -- every `log/` scalar shows up there automatically,
+no plotting code needed. This script stays as the offline fallback: old runs,
+a headless box with no wandb account, or a quick local look before deciding
+whether a run is worth naming on wandb at all.
 """
 
 import argparse
@@ -26,7 +32,12 @@ PANELS = [
     ('Outcome rate per episode',
      ['epstats/log/success/sum', 'epstats/log/crash/sum',
       'epstats/log/stuck/sum', 'epstats/log/timeout/sum'], 'lines'),
+    ('Crash type (of episodes that crashed)',
+     ['epstats/log/crash_building/sum', 'epstats/log/crash_vehicle/sum'], 'lines'),
     ('Waypoints reached per episode', ['epstats/log/waypoint/sum'], 'lines'),
+    ('Distance to current waypoint (m, avg over episode)',
+     ['epstats/log/dist_to_target/avg'], 'lines'),
+    ('Speed (m/s, avg over episode)', ['epstats/log/speed/avg'], 'lines'),
     ('Reconstruction loss per block',
      ['train/loss/lidar', 'train/loss/dynamics', 'train/loss/nav',
       'train/loss/traffic_light', 'train/loss/traffic', 'train/loss/vector'],

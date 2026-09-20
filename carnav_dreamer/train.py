@@ -25,14 +25,33 @@ import elements
 import embodied
 import portal
 import ruamel.yaml as yaml
+from dotenv import load_dotenv
 
 import dreamerv3.main as upstream
 
 from .env import CarNav
 
 HERE = pathlib.Path(__file__).parent
+ROOT = HERE.parent
 UPSTREAM_CONFIGS = pathlib.Path(upstream.folder) / 'configs.yaml'
 LOCAL_CONFIGS = HERE / 'configs.yaml'
+
+
+def _setup_wandb_env():
+  """Load `.env` and reconcile it with wandb's own env var conventions,
+  before `make_logger` (called deep inside `main`, via upstream's
+  `elements.logger.WandBOutput`) gets anywhere near `wandb.init()`.
+
+  wandb's SDK looks for `WANDB_API_KEY` specifically; a `.env` written with a
+  differently named key (this project's is `WANDB_API`) would otherwise send
+  a run into an interactive login prompt the first time it tries to log.
+  `WANDB_PROJECT` gets a project name so runs land somewhere named rather
+  than wandb's default "uncategorized", unless already set.
+  """
+  load_dotenv(ROOT / '.env')
+  if 'WANDB_API_KEY' not in os.environ and 'WANDB_API' in os.environ:
+    os.environ['WANDB_API_KEY'] = os.environ['WANDB_API']
+  os.environ.setdefault('WANDB_PROJECT', 'dreamer-car-nav')
 
 
 def _deep_merge(base, extra):
@@ -80,6 +99,7 @@ def make_env(config, index, **overrides):
 
 
 def main(argv=None):
+  _setup_wandb_env()
   from dreamerv3.agent import Agent
   [elements.print(line) for line in Agent.banner]
 

@@ -132,6 +132,36 @@ def test_log_values_are_float32_scalars():
         assert k in env.obs_space
 
 
+def test_crash_split_is_mutually_exclusive_and_sums_to_crash():
+  """crash_building / crash_vehicle partition crash: never both, and their
+  sum equals it every step, over episodes biased toward actually crashing."""
+  saw_a_crash = False
+  for i in range(6):
+    env = CarNav('full', seed=SEED + i, max_episode_steps=400)
+    rng = np.random.default_rng(i)
+    obs = env.step({'action': np.zeros(3, np.float32), 'reset': True})
+    while not obs['is_last']:
+      a = rng.uniform(-1, 1, 3).astype(np.float32)
+      a[0] = abs(a[0]); a[1] = -1.0
+      obs = env.step({'action': a, 'reset': False})
+      b, v, c = obs['log/crash_building'], obs['log/crash_vehicle'], obs['log/crash']
+      assert not (b and v)
+      assert b + v == c
+      saw_a_crash = saw_a_crash or bool(c)
+  assert saw_a_crash
+
+
+def test_speed_log_matches_info():
+  """log/speed is exactly info['speed'] every step, not re-derived."""
+  env = CarNav('plain', seed=SEED)
+  env.step({'action': np.zeros(3, np.float32), 'reset': True})
+  o = None
+  for _ in range(10):
+    o = env.step({'action': np.array([0.8, 0.0, 0.0], np.float32), 'reset': False})
+    assert o['log/speed'] == np.float32(env.info['speed'])
+  assert o['log/speed'] > 0.0   # accelerating forward for 10 steps actually moved it
+
+
 def test_red_light_log_is_per_step_not_cumulative():
   env = CarNav('lights', seed=SEED)
   outs = drive(env, fixed_actions(300, seed=3))

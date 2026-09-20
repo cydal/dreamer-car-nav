@@ -52,11 +52,14 @@ from .presets import PRESETS
 class CarNav(embodied.Env):
 
   # Per-step scalars exposed as `log/<name>`; the trainer aggregates each per
-  # episode, so `log/success/sum` is the success indicator, `log/waypoint/sum`
-  # the waypoints reached, `log/crash/sum` the crash indicator, and so on.
+  # episode (avg/max/sum), so `log/success/sum` is the success indicator,
+  # `log/waypoint/sum` the waypoints reached, `log/crash/sum` the crash
+  # indicator, and so on. `speed` and the crash-with split use `info["speed"]`
+  # / `info["crash_with"]`, both explicitly sanctioned by INTEGRATION.md for
+  # "logging and diagnostics only" -- never fed back into the observation.
   LOG_KEYS = (
-      'success', 'waypoint', 'crash', 'red_light', 'stuck', 'timeout',
-      'dist_to_target')
+      'success', 'waypoint', 'crash', 'crash_building', 'crash_vehicle',
+      'red_light', 'stuck', 'timeout', 'dist_to_target', 'speed')
 
   def __init__(self, task='plain', seed=None, split_blocks=True,
                reward_scale=1.0, **kwargs):
@@ -137,16 +140,21 @@ class CarNav(embodied.Env):
         for name, sl in self._blocks.items()}
     reason = info.get('reason')
     red = int(info.get('red_light_violations', 0))
+    crashed = bool(info.get('crashed', False))
+    crash_with = info.get('crash_with')
     logs = {
         'success': reason == 'success',
         'waypoint': info.get('targets_reached_this_step', 0),
-        'crash': bool(info.get('crashed', False)),
+        'crash': crashed,
+        'crash_building': crashed and crash_with == 'building',
+        'crash_vehicle': crashed and crash_with == 'vehicle',
         # The env's count is cumulative over the episode; diff it so the
         # per-episode `sum` aggregate is the number of violations.
         'red_light': max(0, red - self._prev_red),
         'stuck': reason == 'stuck',
         'timeout': reason == 'timeout',
         'dist_to_target': info.get('dist_to_target', 0.0),
+        'speed': info.get('speed', 0.0),
     }
     self._prev_red = red
     out.update(

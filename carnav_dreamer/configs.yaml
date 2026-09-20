@@ -11,6 +11,15 @@
 #   python -m carnav_dreamer.train --configs carnav carnav_mac debug --run.steps 3000 ...
 
 defaults:
+  logger:
+    # wandb alongside upstream's own jsonl (our scripts and tests read
+    # metrics.jsonl directly, so it stays even with wandb on). `scope` is
+    # dropped: it's a second local dashboard we don't use, so keeping it
+    # would just be another artifact to explain. Needs a WANDB_API_KEY in
+    # the environment or `.env` (see carnav_dreamer/train.py::_setup_wandb_env);
+    # override with `--logger.outputs jsonl` to disable network calls
+    # entirely (tests do this).
+    outputs: [jsonl, wandb]
   env:
     # Constructor kwargs for carnav_dreamer.env.CarNav. `use_seed` is consumed
     # by make_env (seed = hash((config.seed, env_index))) exactly as upstream
@@ -45,6 +54,27 @@ carnav:
     log_every: 60
     report_every: 300
     save_every: 600
+
+# Size tier is deliberately not baked in here -- pick one explicitly with
+# --configs, e.g. `--configs carnav size12m`. Guidance, checked against the
+# resolved latent width (deter + stoch*classes) vs. observation width per task:
+#
+#   task            obs dim   suggested size   deter+stoch*classes
+#   carnav_plain     46       size1m           512 + 32*4   = 640
+#   carnav_lights    53       size1m           640
+#   carnav_traffic   66       size12m          2048 + 32*16 = 2560
+#   carnav_full      73       size12m          2560
+#
+# size1m is exactly the tier upstream uses for dmc_proprio (proprioceptive
+# continuous control, state dims ~24-60 -- the same order of magnitude as our
+# 46/53-D tasks), so it's well precedented there, not a guess. traffic/full
+# add eight independently controlled vehicles and a signal phase FSM to
+# predict forward, which is a much richer *process* than the extra 13-20
+# observation dims suggest, so size12m is the more defensible starting point
+# -- but unlike the size1m choice, this one is reasoning from task structure,
+# not measurement. `scripts/train_gpu.sh` applies this mapping by default;
+# override with `SIZE=`. Worth an explicit ablation (size1m vs size12m on
+# carnav_full) once GPU time is available -- see notes/devlog.md.
 
 # Apple-silicon development box: CPU JAX, float32 (bfloat16 is emulated and
 # slow on CPU), no memory preallocation, fewer envs. Pair with size1m.

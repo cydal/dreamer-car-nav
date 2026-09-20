@@ -26,11 +26,30 @@ conda activate dreamer-carnav
 pip install -e "../rl-env3d[gym]"            # the env, from a sibling checkout
 scripts/fetch_upstream.sh                    # upstream DreamerV3 at the pinned sha
 pip install -e .                             # makes `carnav_dreamer` importable
-pytest                                       # ~25 s: adapter contract + tiny train/restore
+pytest                                       # ~30 s: adapter contract + tiny train/restore
 ```
 
 On a Linux NVIDIA machine, `scripts/setup_gpu.sh` does all of this with
 `requirements-cuda.txt` (CUDA 12 wheels, env pinned to a git sha).
+
+### Logging: wandb by default
+
+Runs log to [wandb](https://wandb.ai) (project `dreamer-car-nav`) alongside
+the local `metrics.jsonl` every run always writes. Put your API key in a
+`.env` file at the repo root (gitignored):
+
+```
+WANDB_API_KEY=...
+```
+
+(`carnav_dreamer/train.py::_setup_wandb_env` also accepts a key named
+`WANDB_API`, and defaults `WANDB_PROJECT` if you haven't set one.) To train
+with no network calls at all — what the test suite does — override the
+logger:
+
+```bash
+python -m carnav_dreamer.train ... --logger.outputs jsonl
+```
 
 ## Train
 
@@ -57,6 +76,18 @@ Tasks: `carnav_plain` (46-D, no traffic, no lights), `carnav_lights` (53-D),
 `carnav_traffic` (66-D), `carnav_full` (73-D). Same map, spawn and waypoints
 for a given seed across all four.
 
+**Size tier is chosen explicitly, and by task.** `size1m` (`--configs carnav
+size1m`) is the tier upstream itself uses for proprioceptive continuous
+control (`dmc_proprio`) with state dims in the same range as `plain`/`lights`
+(46/53-D vs. DMC's ~24-60-D) — well precedented, not a guess. `traffic`/`full`
+add eight independently controlled vehicles and a signal-phase state machine
+to predict forward, a much richer *process* than the extra observation dims
+suggest, so `size12m` is the more defensible starting point there — reasoning
+from task structure rather than measurement, and worth an ablation once GPU
+time is available. `scripts/train_gpu.sh` picks the tier from `--task`
+automatically (override with `SIZE=`); see the comment block above the
+`carnav` entry in `carnav_dreamer/configs.yaml` for the numbers.
+
 ## Evaluate and watch
 
 ```bash
@@ -77,9 +108,13 @@ and `traffic` (20). The adapter exposes each block as its own observation key.
 DreamerV3's encoder concatenates them anyway, but its decoder emits one
 reconstruction head per key, so the logs carry `train/loss/lidar`,
 `train/loss/nav`, … separately and the 7 traffic-light channels are not drowned
-by 32 LIDAR channels. Episode outcomes (`success`, `waypoint`, `crash`,
-`red_light`, `stuck`, `timeout`) ride along as `log/` scalars that upstream
-aggregates per episode, so `epstats/log/success/sum` is the success rate.
+by 32 LIDAR channels. Episode outcomes (`success`, `waypoint`, `crash` split into
+`crash_building`/`crash_vehicle`, `red_light`, `stuck`, `timeout`) plus
+`dist_to_target` and `speed` (both privileged ground truth, explicitly
+sanctioned by the env's own docs for logging, never fed back into the
+observation) ride along as `log/` scalars that upstream aggregates per
+episode, so `epstats/log/success/sum` is the success rate and
+`epstats/log/speed/avg` is how fast the car moved, on average, that episode.
 
 The env's `terminated` (success, crash, stuck) maps to `is_terminal`, and its
 `truncated` (timeout) to `is_last` only, so the value function bootstraps

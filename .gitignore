@@ -9,6 +9,7 @@ dreamerv3/
 logdir/
 *.ckpt
 *.pkl
+wandb/
 
 # Python
 __pycache__/
@@ -21,3 +22,4 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+.env

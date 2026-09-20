@@ -19,6 +19,8 @@ ruamel.yaml
 cloudpickle
 colored_traceback
 tqdm
+wandb
+python-dotenv
 
 # Car navigation environment (../rl-env3d, GitHub: cydal/Car-Navigation-Env).
 # Locally we install it editable so the sibling checkout is the source of truth:
