@@ -113,8 +113,10 @@ by 32 LIDAR channels. Episode outcomes (`success`, `waypoint`, `crash` split int
 `dist_to_target` and `speed` (both privileged ground truth, explicitly
 sanctioned by the env's own docs for logging, never fed back into the
 observation) ride along as `log/` scalars that upstream aggregates per
-episode, so `epstats/log/success/sum` is the success rate and
-`epstats/log/speed/avg` is how fast the car moved, on average, that episode.
+episode, so `epstats/log/success/sum` is the success rate over recent
+episodes. **[METRICS.md](METRICS.md)** explains every logged key in detail,
+including the aggregation semantics that make `/sum` a rate rather than a
+count here — worth reading before trusting a number from a run's logs.
 
 The env's `terminated` (success, crash, stuck) maps to `is_terminal`, and its
 `truncated` (timeout) to `is_last` only, so the value function bootstraps
@@ -124,7 +126,12 @@ exactly where the env's documentation says it should.
 
 - [x] M0 environment, pinned upstream, tests
 - [x] M1 adapter, config layering, smoke run (12 s on an M3 Pro)
-- [ ] M2 first learning signal on the laptop (size1m, running)
+- [x] M2 pipeline validation on the laptop (`size1m`, 146k steps, ~5h CPU) —
+      not meant to learn to drive, and it didn't; confirms every termination
+      path, loss family and the checkpoint save/restore/inference path are
+      wired correctly before spending GPU time. Details in
+      [METRICS.md §8](METRICS.md#8-what-the-pipeline-is-correctly-set-up-actually-means-checked)
+      and `notes/devlog.md`.
 - [ ] M3 GPU runs on `carnav_plain`, paired evaluation against the scripted baseline (+222 reward, 44% full route)
 - [ ] M4 harder tasks (`lights`, `full`)
 - [ ] M5 imagined-trajectory overlay in the viewer; image observations
