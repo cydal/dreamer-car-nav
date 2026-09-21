@@ -48,6 +48,14 @@ other reward component passes through untouched, and `info["episode_reward"]`
 still tracks the env's own (unshaped) formula, per that wrapper's documented
 contract -- `scripts/evaluate.py` builds its own unwrapped env, so evaluation
 against the published baseline is never affected by this flag.
+
+`intersection_targets` (default False) is the map-side half of the same fix:
+`carnav_dreamer.targets.patch_intersection_targets` rebinds the env's own
+waypoint sampler (on this instance only) so waypoints prefer genuine
+intersections over dead ends, falling back gracefully rather than ever
+failing to produce a target. See that module's docstring for the exact
+fallback ladder and why reproducibility is unaffected (same RNG stream,
+different sampling policy).
 """
 
 import functools
@@ -61,6 +69,7 @@ from wrappers import RewardOverrideWrapper
 
 from .presets import PRESETS
 from .shaping import PathDistanceShaper
+from .targets import patch_intersection_targets
 
 
 class CarNav(embodied.Env):
@@ -78,15 +87,18 @@ class CarNav(embodied.Env):
   LOG_KEYS = (
       'success', 'waypoint', 'crash', 'crash_building', 'crash_vehicle',
       'crash_pedestrian', 'red_light', 'stuck', 'timeout', 'dist_to_target',
-      'speed', 'pedestrians_on_road')
+      'speed', 'pedestrians_on_road', 'target_at_intersection')
 
   def __init__(self, task='plain', seed=None, split_blocks=True,
-               reward_scale=1.0, path_shaping=False, **kwargs):
+               reward_scale=1.0, path_shaping=False,
+               intersection_targets=False, **kwargs):
     if task not in PRESETS:
       raise KeyError(f'unknown carnav task {task!r}; one of {sorted(PRESETS)}')
     settings = dict(PRESETS[task])
     settings.update(kwargs)
     raw = carnav.make(obs_type='vector', seed=seed, **settings)
+    if intersection_targets:
+      patch_intersection_targets(raw)
     self._env = (
         RewardOverrideWrapper(raw, PathDistanceShaper(raw))
         if path_shaping else raw)
@@ -106,6 +118,9 @@ class CarNav(embodied.Env):
     self._done = True
     self._info = None
     self._prev_red = 0
+    # Constant for the whole episode (all n_targets are chained at reset, see
+    # carnav_dreamer.targets) -- recomputed once per reset, read every step.
+    self._target_intersection_frac = 0.0
 
   @property
   def env(self):
@@ -147,6 +162,8 @@ class CarNav(embodied.Env):
       self._done = False
       self._prev_red = 0
       obs, self._info = self._env.reset()
+      flags = getattr(self._env, '_targets_at_intersection', None)
+      self._target_intersection_frac = float(np.mean(flags)) if flags else 0.0
       return self._obs(obs, 0.0, self._info, is_first=True)
     act = np.asarray(action['action'], np.float32)
     obs, reward, terminated, truncated, self._info = self._env.step(act)
@@ -179,6 +196,7 @@ class CarNav(embodied.Env):
         'dist_to_target': info.get('dist_to_target', 0.0),
         'speed': info.get('speed', 0.0),
         'pedestrians_on_road': info.get('pedestrians_on_road', 0),
+        'target_at_intersection': self._target_intersection_frac,
     }
     self._prev_red = red
     out.update(

@@ -35,6 +35,7 @@ defaults:
       split_blocks: True
       reward_scale: 1.0
       path_shaping: False
+      intersection_targets: False
       width: 48
       height: 48
       n_targets: 3

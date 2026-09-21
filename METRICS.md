@@ -114,6 +114,17 @@ diagnostics only", never observation):
   presented a pedestrian-avoidance situation at all, useful for sanity-
   checking that a pedestrian-enabled run is seeing them with any regularity
   before reading anything into `crash_pedestrian`.
+- `epstats/log/target_at_intersection/avg` — fraction of this episode's
+  waypoints that landed at a genuine intersection rather than a dead end or a
+  bare through-point, constant for the whole episode (all waypoints are
+  chained at reset, not resampled mid-episode) and only meaningful with
+  `env.carnav.intersection_targets=True`
+  (`carnav_dreamer.targets.patch_intersection_targets`) — 0.0 always without
+  it, since the flag being off means the field was never populated. Should
+  sit near 1.0 when the flag is on; a value drifting down over many episodes
+  would mean the fallback ladder (through-points, then the original sampler)
+  is being hit more often than expected for the configured map size / target
+  distance range.
 
 `epstats/reward_rate` (outside `log/`, upstream's own): fraction of
 consecutive step-reward pairs in an episode that differ by ≥0.01 — a coarse

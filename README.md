@@ -103,6 +103,25 @@ through untouched via `RewardOverrideWrapper`, and `scripts/evaluate.py`
 builds its own unwrapped env, so this never affects comparison against the
 published baseline. `--env.carnav.path_shaping True` to turn it on.
 
+**Waypoints avoiding dead ends in the first place
+(`env.carnav.intersection_targets`, default `False`).** The map-side half of
+the same fix: `env/nav_env.py::_sample_targets` places waypoints on a
+uniformly random road tile, filtered only by straight-line distance — no
+screening for dead ends at all, unlike spawn placement, which explicitly
+checks for room to drive away. `carnav_dreamer.targets
+.patch_intersection_targets` rebinds the sampler (on one env instance, no
+rl-env3d edit) to prefer real intersections — a node with 3+ road
+connections, so there's always a way to continue without a U-turn — falling
+back gracefully (through-points, then the original sampler, then a fully
+random point) rather than ever failing to produce a target. Measured over
+200 seeds / 600 waypoints: the vanilla sampler puts 3.2% of waypoints at a
+genuine dead end; patched, 0%, with 100% landing at a true intersection.
+Reproducibility is unaffected — it draws from the same `env.city.rng` stream
+the original sampler uses, so a given seed still reproduces exactly, just as
+a different (dead-end-free) episode than the vanilla sampler would give it.
+`--env.carnav.intersection_targets True` to turn it on; composes with
+`path_shaping` (independent flags, same underlying env instance).
+
 **Size tier is chosen explicitly, and by task.** `size1m` (`--configs carnav
 size1m`) is the tier upstream itself uses for proprioceptive continuous
 control (`dmc_proprio`) with state dims in the same range as `plain`/`lights`
