@@ -48,11 +48,15 @@ Two length values are diagnostic on their own, independent of score:
 
 ## 2. Episode outcomes: `epstats/log/*`
 
-Seven per-step scalars are attached to every observation by
+Per-step scalars attached to every observation by
 `carnav_dreamer/env.py::CarNav._obs` under the `log/` prefix (stripped before
 the agent sees them, per `embodied`'s convention): `success`, `waypoint`,
-`crash` (split into `crash_building`/`crash_vehicle`), `red_light`, `stuck`,
-`timeout`, `dist_to_target`, `speed`. Each becomes three keys —
+`crash` (split into `crash_building`/`crash_vehicle`/`crash_pedestrian`),
+`red_light`, `stuck`, `timeout`, `dist_to_target`, `speed`,
+`pedestrians_on_road`. The last three of those are always in `LOG_KEYS`
+regardless of task, so `crash_pedestrian`/`pedestrians_on_road` are simply
+zero on any task with `pedestrians=False` rather than being schema that
+varies per task. Each becomes three keys —
 `epstats/log/<name>/{avg,max,sum}` — through two stacked aggregations that
 matter to understand correctly:
 
@@ -83,7 +87,7 @@ reading, where the rate is exactly what you want anyway.
 | `epstats/log/success/sum` | reached all `n_targets` waypoints — the number to watch |
 | `epstats/log/waypoint/sum` | mean **count** of waypoints reached per episode (not a rate — `targets_reached_this_step` sums above 1 across a multi-waypoint episode), so this one can exceed 1 |
 | `epstats/log/crash/sum` | hit a building or a vehicle |
-| `epstats/log/crash_building/sum`, `epstats/log/crash_vehicle/sum` | the same, split by what was hit (mirrors rl-env3d's baseline table's b/v breakdown); their per-episode sums always partition `crash`'s |
+| `epstats/log/crash_building/sum`, `epstats/log/crash_vehicle/sum`, `epstats/log/crash_pedestrian/sum` | the same, split by what was hit; the three always partition `crash`'s per-episode sum. `crash_pedestrian` needs `pedestrians=True` to ever be nonzero — costs `pedestrian_penalty` (300, bigger than a vehicle crash's 100) |
 | `epstats/log/stuck/sum` | idled below 0.5 m/s for `stuck_steps` — charged the *entire remaining* time penalty as one lump sum, reported as `terminated` (not `truncated`) so the value function is never also bootstrapped past it (INTEGRATION.md, "Episode endings") |
 | `epstats/log/timeout/sum` | ran to `max_episode_steps` without any of the above — `truncated`, so the critic *does* bootstrap here |
 | `epstats/log/red_light/sum` | mean **count** of red-light entries per episode (diffed from the env's cumulative counter in the adapter, so this is a per-step event count, not cumulative) |
@@ -104,6 +108,12 @@ diagnostics only", never observation):
   exactly the ambiguity that made the M2 run's flat score misleading (length
   went from 151 to 400+ while score got *worse*: the car started driving, just
   not toward anything yet).
+- `epstats/log/pedestrians_on_road/avg` — average count of people currently
+  on a zebra crossing (`info["pedestrians_on_road"]`), only ever nonzero with
+  `pedestrians=True`. A rough measure of how often the episode actually
+  presented a pedestrian-avoidance situation at all, useful for sanity-
+  checking that a pedestrian-enabled run is seeing them with any regularity
+  before reading anything into `crash_pedestrian`.
 
 `epstats/reward_rate` (outside `log/`, upstream's own): fraction of
 consecutive step-reward pairs in an episode that differ by ≥0.01 — a coarse

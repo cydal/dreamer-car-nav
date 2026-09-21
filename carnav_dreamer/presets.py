@@ -5,15 +5,24 @@ the baseline table in rl-env3d's INTEGRATION.md ("What to beat"), so a trained
 policy's number can be put next to the scripted controller's without any
 config archaeology:
 
-    task            dims   scripted baseline (300 episodes, seeds 5000-5299)
-    carnav_plain     46    +222 mean reward, 1.90/3 waypoints, 44.0% full route
-    carnav_lights    53    +179, 1.86/3, 42.7%
-    carnav_traffic   66    +137, 1.42/3, 26.7%
-    carnav_full      73    +129, 1.58/3, 31.3%
+    task              dims   scripted baseline (300 episodes, seeds 5000-5299)
+    carnav_plain       46    +222 mean reward, 1.90/3 waypoints, 44.0% full route
+    carnav_lights      53    +179, 1.86/3, 42.7%
+    carnav_traffic     66    +137, 1.42/3, 26.7%
+    carnav_full        73    +129, 1.58/3, 31.3%
+    carnav_full_peds   93    no published baseline -- pedestrians=True is not
+                              in rl-env3d's own baseline table; run
+                              scripts/evaluate.py yourself for a reference point.
 
-The env keeps the map, spawn and waypoints identical across these four for a
-given seed (independent RNG streams per subsystem), so differences between
-rows are differences between tasks, not between maps.
+The env keeps the map, spawn and waypoints identical across the first four
+for a given seed (independent RNG streams per subsystem), so differences
+between rows are differences between tasks, not between maps. Adding
+pedestrians draws from its *own* additional RNG stream (INTEGRATION.md,
+"Seeding and reproducibility"), so `carnav_full_peds` keeps that same map/
+spawn/waypoint pairing too -- it just adds crossings, people, and their own
+5-feature-per-slot `pedestrians` observation block (same layout as `traffic`)
+on top, plus a 300-point crash penalty (`crash_with="pedestrian"`) larger
+than a vehicle crash's.
 """
 
 PRESETS = {
@@ -21,4 +30,5 @@ PRESETS = {
     "lights": dict(traffic=False, traffic_lights=True),
     "traffic": dict(traffic=True, traffic_lights=False),
     "full": dict(traffic=True, traffic_lights=True),
+    "full_peds": dict(traffic=True, traffic_lights=True, pedestrians=True),
 }

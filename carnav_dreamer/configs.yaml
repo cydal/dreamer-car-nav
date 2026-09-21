@@ -34,6 +34,7 @@ defaults:
       use_seed: True
       split_blocks: True
       reward_scale: 1.0
+      path_shaping: False
       width: 48
       height: 48
       n_targets: 3
@@ -44,6 +45,8 @@ defaults:
       n_traffic: 8
       n_parked: 18
       lidar_noise: 0.0
+      pedestrians: False
+      speed_signs: False
 
 carnav:
   task: carnav_plain
@@ -59,11 +62,12 @@ carnav:
 # --configs, e.g. `--configs carnav size12m`. Guidance, checked against the
 # resolved latent width (deter + stoch*classes) vs. observation width per task:
 #
-#   task            obs dim   suggested size   deter+stoch*classes
-#   carnav_plain     46       size1m           512 + 32*4   = 640
-#   carnav_lights    53       size1m           640
-#   carnav_traffic   66       size12m          2048 + 32*16 = 2560
-#   carnav_full      73       size12m          2560
+#   task               obs dim   suggested size   deter+stoch*classes
+#   carnav_plain        46       size1m           512 + 32*4   = 640
+#   carnav_lights       53       size1m           640
+#   carnav_traffic      66       size12m          2048 + 32*16 = 2560
+#   carnav_full         73       size12m          2560
+#   carnav_full_peds    93       size12m          2560
 #
 # size1m is exactly the tier upstream uses for dmc_proprio (proprioceptive
 # continuous control, state dims ~24-60 -- the same order of magnitude as our
@@ -72,9 +76,11 @@ carnav:
 # predict forward, which is a much richer *process* than the extra 13-20
 # observation dims suggest, so size12m is the more defensible starting point
 # -- but unlike the size1m choice, this one is reasoning from task structure,
-# not measurement. `scripts/train_gpu.sh` applies this mapping by default;
-# override with `SIZE=`. Worth an explicit ablation (size1m vs size12m on
-# carnav_full) once GPU time is available -- see notes/devlog.md.
+# not measurement. `full_peds` adds pedestrians and their own reactive
+# crossing behaviour on top of `full`; same size12m reasoning, same caveat.
+# `scripts/train_gpu.sh` applies this mapping by default; override with
+# `SIZE=`. Worth an explicit ablation (size1m vs size12m on carnav_full) once
+# GPU time is available -- see notes/devlog.md.
 
 # Apple-silicon development box: CPU JAX, float32 (bfloat16 is emulated and
 # slow on CPU), no memory preallocation, fewer envs. Pair with size1m.

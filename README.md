@@ -73,8 +73,35 @@ upstream's parser only accepts keys that already exist, so the env knobs you
 can set this way are the ones listed under `env.carnav` in the yaml.
 
 Tasks: `carnav_plain` (46-D, no traffic, no lights), `carnav_lights` (53-D),
-`carnav_traffic` (66-D), `carnav_full` (73-D). Same map, spawn and waypoints
-for a given seed across all four.
+`carnav_traffic` (66-D), `carnav_full` (73-D), `carnav_full_peds` (93-D,
+`full` plus pedestrians and their own observation block). Same map, spawn
+and waypoints for a given seed across the first four; `full_peds` draws
+pedestrians from their own RNG stream on top, so it keeps that pairing too.
+
+**Every checkpoint so far was trained on `carnav_plain`** — no traffic
+lights, no pedestrians, in any episode it has ever seen. Watching it in the
+viewer with `--pedestrians` or normal traffic on will show it always running
+red lights and reacting to pedestrians only by accident (they're LIDAR
+geometry blips with no velocity or identity, same as a lamp post) — that's
+not a training deficiency to fix by training longer, it's the observation
+having no channel for either. `carnav_lights`/`carnav_full_peds` fix that by
+actually training on a task whose observation includes them; watch a
+checkpoint with the scene features its own task turned on, not more.
+
+**Reward shaping for detours (`env.carnav.path_shaping`, default `False`).**
+The env's own progress reward is potential-based on *straight-line* distance
+to the current waypoint. That's a shaping trap for any waypoint that needs a
+detour or a reversal to reach (a target at the tip of a dead-end corridor,
+say): backing out to turn around necessarily increases straight-line
+distance for a few steps, so the correct recovery is charged exactly like
+driving the wrong way — independent of whether the policy has "learned to
+reverse". `carnav_dreamer.shaping.PathDistanceShaper` substitutes real
+road-graph path distance (Dijkstra over `env.city.road_nodes`/`node_links`,
+a lattice rl-env3d already builds for its own traffic routing) for the
+straight-line term, and nothing else — every other reward component passes
+through untouched via `RewardOverrideWrapper`, and `scripts/evaluate.py`
+builds its own unwrapped env, so this never affects comparison against the
+published baseline. `--env.carnav.path_shaping True` to turn it on.
 
 **Size tier is chosen explicitly, and by task.** `size1m` (`--configs carnav
 size1m`) is the tier upstream itself uses for proprioceptive continuous
@@ -110,17 +137,31 @@ observation change) and integrates it with the exact kinematics
 `env/car.py::Car.step` uses, anchored at the car's current pose. Shows up in
 the viewer as translucent lines fanning out from the car and an `imagining
 ×N · H steps` chip next to the agent's name, both gated behind the `sensors`
-overlay toggle. ~5ms per call on CPU (`size1m`, defaults `n_samples=3,
-horizon=16`), jitted once at construction so it holds up at the viewer's
-20 Hz tick. Constructor args, or edit `configs/agents/dreamer.json`'s
-`kwargs`. Details and the three JAX/ninjax gotchas it took to get there:
+overlay toggle. ~5ms per call on CPU (`size1m`), jitted once at construction
+so it holds up at the viewer's 20 Hz tick. Constructor defaults are
+`n_samples=3, horizon=40` (2s of imagined future at `dt=0.05`) — the chip
+alone confirms the data is arriving, but the lines themselves are short and
+easy to miss at low speed or in a busy scene (traffic + pedestrians on);
+`horizon` is the lever to lengthen them regardless of how fast the car is
+actually moving. Edit `configs/agents/dreamer*.json`'s `kwargs` to change
+either. Details and the three JAX/ninjax gotchas it took to get there:
 walkthrough chapter 4.5.
 
 ## What is in the observation, and how the adapter uses it
 
 The env's vector is a concatenation of named blocks (`env.obs_slices`):
-`lidar` (32), `dynamics` (5), `nav` (9), and, when enabled, `traffic_light` (7)
-and `traffic` (20). The adapter exposes each block as its own observation key.
+`lidar` (32), `dynamics` (5), `nav` (9), and, when enabled, `traffic_light` (7),
+`traffic` (20) and `pedestrians` (20, same 5-feature-per-slot layout as
+`traffic`). The adapter exposes each block as its own observation key.
+
+**`env.radar` is never one of these blocks — it's not in the observation at
+all.** It's an auxiliary sensor built only for the viewer's own HUD readout
+(`env/nav_env.py`), and it only ever scans moving vehicles
+(`radar.scan(self.traffic, self.car)` — pedestrians never enter it), so it
+wouldn't have helped with pedestrian awareness even if wired in. The vector
+equivalent for pedestrians already exists as a first-class block
+(`pedestrians=True`, same shape as `traffic`) rather than needing to be
+built from radar or LIDAR.
 DreamerV3's encoder concatenates them anyway, but its decoder emits one
 reconstruction head per key, so the logs carry `train/loss/lidar`,
 `train/loss/nav`, … separately and the 7 traffic-light channels are not drowned
@@ -149,7 +190,9 @@ exactly where the env's documentation says it should.
       [METRICS.md §8](METRICS.md#8-what-the-pipeline-is-correctly-set-up-actually-means-checked)
       and `notes/devlog.md`.
 - [ ] M3 GPU runs on `carnav_plain`, paired evaluation against the scripted baseline (+222 reward, 44% full route)
-- [ ] M4 harder tasks (`lights`, `full`)
+- [ ] M4 harder tasks: `carnav_full_peds` (traffic + lights + pedestrians),
+      with `path_shaping=True` to fix the dead-end trap diagnosed on the
+      first GPU `plain`-task run
 - [x] M5a imagined-trajectory overlay in the viewer -- decodes the existing
       `dynamics` head, no retraining; verified against the live viewer and
       its raw websocket payload

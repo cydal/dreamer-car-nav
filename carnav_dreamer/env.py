@@ -36,6 +36,18 @@ carry the decision. `split_blocks=False` gives a single `vector` key.
 
 `reward_scale` multiplies the reward handed to the agent (default 1.0); it is
 the switch for the reward-scaling ablation and nothing else reads it.
+
+`path_shaping` (default False) substitutes road-graph path distance for the
+env's own straight-line progress term (`carnav_dreamer.shaping
+.PathDistanceShaper`) -- see that module's docstring for why: straight-line
+progress punishes a required detour or reversal (backing out of a dead end)
+exactly like driving the wrong way, which both disincentivises the correct
+recovery and biases exploration away from ever finding it. Applied via
+rl-env3d's own `wrappers.RewardOverrideWrapper`, not an env change; every
+other reward component passes through untouched, and `info["episode_reward"]`
+still tracks the env's own (unshaped) formula, per that wrapper's documented
+contract -- `scripts/evaluate.py` builds its own unwrapped env, so evaluation
+against the published baseline is never affected by this flag.
 """
 
 import functools
@@ -45,8 +57,10 @@ import embodied
 import numpy as np
 
 import carnav
+from wrappers import RewardOverrideWrapper
 
 from .presets import PRESETS
+from .shaping import PathDistanceShaper
 
 
 class CarNav(embodied.Env):
@@ -54,20 +68,28 @@ class CarNav(embodied.Env):
   # Per-step scalars exposed as `log/<name>`; the trainer aggregates each per
   # episode (avg/max/sum), so `log/success/sum` is the success indicator,
   # `log/waypoint/sum` the waypoints reached, `log/crash/sum` the crash
-  # indicator, and so on. `speed` and the crash-with split use `info["speed"]`
-  # / `info["crash_with"]`, both explicitly sanctioned by INTEGRATION.md for
-  # "logging and diagnostics only" -- never fed back into the observation.
+  # indicator, and so on. `speed`, the crash-with split and
+  # `pedestrians_on_road` use privileged info fields explicitly sanctioned by
+  # INTEGRATION.md for "logging and diagnostics only" -- never fed back into
+  # the observation. `crash_pedestrian` and `pedestrians_on_road` are only
+  # ever nonzero when the task has `pedestrians=True`; harmless zeros
+  # otherwise, so they're unconditionally in LOG_KEYS rather than varying the
+  # schema per task.
   LOG_KEYS = (
       'success', 'waypoint', 'crash', 'crash_building', 'crash_vehicle',
-      'red_light', 'stuck', 'timeout', 'dist_to_target', 'speed')
+      'crash_pedestrian', 'red_light', 'stuck', 'timeout', 'dist_to_target',
+      'speed', 'pedestrians_on_road')
 
   def __init__(self, task='plain', seed=None, split_blocks=True,
-               reward_scale=1.0, **kwargs):
+               reward_scale=1.0, path_shaping=False, **kwargs):
     if task not in PRESETS:
       raise KeyError(f'unknown carnav task {task!r}; one of {sorted(PRESETS)}')
     settings = dict(PRESETS[task])
     settings.update(kwargs)
-    self._env = carnav.make(obs_type='vector', seed=seed, **settings)
+    raw = carnav.make(obs_type='vector', seed=seed, **settings)
+    self._env = (
+        RewardOverrideWrapper(raw, PathDistanceShaper(raw))
+        if path_shaping else raw)
     # Multiplies the reward the agent sees; the env's own bookkeeping
     # (info['episode_reward'], the log/ scalars) is untouched. 1.0 is the
     # default and the claim under test: DreamerV3's symlog two-hot heads and
@@ -148,6 +170,7 @@ class CarNav(embodied.Env):
         'crash': crashed,
         'crash_building': crashed and crash_with == 'building',
         'crash_vehicle': crashed and crash_with == 'vehicle',
+        'crash_pedestrian': crashed and crash_with == 'pedestrian',
         # The env's count is cumulative over the episode; diff it so the
         # per-episode `sum` aggregate is the number of violations.
         'red_light': max(0, red - self._prev_red),
@@ -155,6 +178,7 @@ class CarNav(embodied.Env):
         'timeout': reason == 'timeout',
         'dist_to_target': info.get('dist_to_target', 0.0),
         'speed': info.get('speed', 0.0),
+        'pedestrians_on_road': info.get('pedestrians_on_road', 0),
     }
     self._prev_red = red
     out.update(

@@ -2,7 +2,7 @@
   "module": "carnav_dreamer.agent",
   "factory": "DreamerAgent",
   "kwargs": {
-    "logdir": "logdir/m2_plain_size1m",
+    "logdir": "logdir/gpu_plain_size1m_20260921T151413",
     "n_samples": 3,
     "horizon": 40
   }
