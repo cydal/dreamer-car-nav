@@ -100,6 +100,22 @@ python ../rl-env3d/main.py serve --agent configs/agents/dreamer.json --traffic n
 implements rl-env3d's `reset()/act()/diagnostics()` agent contract, so the
 trained policy is a drop-in wherever the env accepts an agent.
 
+**The viewer also draws the world model's imagination.** rl-env3d's
+`diagnostics()["imagined_trajectories"]` contract (INTEGRATION.md,
+"Visualising a world model's imagination") is implemented for real: every
+tick, `DreamerAgent` rolls the *prior* forward from the current latent state
+under the current policy (`n_samples` times, `horizon` steps), decodes the
+already-trained `dynamics` block (speed, yaw rate, slip -- no retraining, no
+observation change) and integrates it with the exact kinematics
+`env/car.py::Car.step` uses, anchored at the car's current pose. Shows up in
+the viewer as translucent lines fanning out from the car and an `imagining
+×N · H steps` chip next to the agent's name, both gated behind the `sensors`
+overlay toggle. ~5ms per call on CPU (`size1m`, defaults `n_samples=3,
+horizon=16`), jitted once at construction so it holds up at the viewer's
+20 Hz tick. Constructor args, or edit `configs/agents/dreamer.json`'s
+`kwargs`. Details and the three JAX/ninjax gotchas it took to get there:
+walkthrough chapter 4.5.
+
 ## What is in the observation, and how the adapter uses it
 
 The env's vector is a concatenation of named blocks (`env.obs_slices`):
@@ -134,7 +150,10 @@ exactly where the env's documentation says it should.
       and `notes/devlog.md`.
 - [ ] M3 GPU runs on `carnav_plain`, paired evaluation against the scripted baseline (+222 reward, 44% full route)
 - [ ] M4 harder tasks (`lights`, `full`)
-- [ ] M5 imagined-trajectory overlay in the viewer; image observations
+- [x] M5a imagined-trajectory overlay in the viewer -- decodes the existing
+      `dynamics` head, no retraining; verified against the live viewer and
+      its raw websocket payload
+- [ ] M5b image observations
 
 ## License
 

@@ -12,9 +12,6 @@ call or depends on a WANDB_API_KEY being configured.
 """
 
 import json
-import pathlib
-import subprocess
-import sys
 
 import numpy as np
 import pytest
@@ -22,22 +19,8 @@ import pytest
 import carnav
 from carnav_dreamer.presets import PRESETS
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-
-
-@pytest.fixture(scope='module')
-def tiny_logdir(tmp_path_factory):
-  logdir = tmp_path_factory.mktemp('run') / 'tiny'
-  cmd = [
-      sys.executable, '-m', 'carnav_dreamer.train',
-      '--configs', 'carnav', 'carnav_mac', 'debug',
-      '--run.steps', '1500', '--run.envs', '2', '--run.log_every', '1',
-      '--env.carnav.max_episode_steps', '60',
-      '--logger.outputs', 'jsonl',
-      '--logdir', str(logdir)]
-  proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=600)
-  assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-3000:]
-  return logdir
+# `tiny_logdir` is a session-scoped fixture in tests/conftest.py, shared with
+# test_imagination.py so the ~25s training subprocess only runs once.
 
 
 def test_training_writes_config_metrics_and_checkpoint(tiny_logdir):
@@ -69,7 +52,12 @@ def test_agent_restores_and_drives(tiny_logdir):
       if terminated or truncated:
         break
     assert len(actions) <= 40
-    assert agent.diagnostics() == {}
+    # `dynamics` is always a trained block (never gated off, unlike traffic
+    # blocks), so even this tiny debug model imagines -- see
+    # tests/test_imagination.py for the detailed contract.
+    diag = agent.diagnostics()
+    assert set(diag) == {'imagined_trajectories'}
+    assert len(diag['imagined_trajectories']) == agent.n_samples
 
 
 def test_agent_reads_its_blocks_by_name_from_a_wider_env(tiny_logdir):
