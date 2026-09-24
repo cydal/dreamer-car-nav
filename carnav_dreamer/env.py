@@ -56,6 +56,15 @@ intersections over dead ends, falling back gracefully rather than ever
 failing to produce a target. See that module's docstring for the exact
 fallback ladder and why reproducibility is unaffected (same RNG stream,
 different sampling policy).
+
+`turn_penalty` (default 0.0, i.e. off) adds `carnav_dreamer.shaping
+.TurnSpeedPenalty` on top of whatever reward the car would otherwise see --
+composes with `path_shaping` rather than replacing anything, since a full
+checkpoint trained under the base reward alone was observed driving well
+above the scripted baseline's speed and taking corners hard, a pattern the
+base reward's aggregate crash rate doesn't surface because a near miss
+doesn't set the crash flag. See that class's docstring for why it penalises
+`|yaw_rate|` rather than speed and steer angle separately.
 """
 
 import functools
@@ -68,7 +77,7 @@ import carnav
 from wrappers import RewardOverrideWrapper
 
 from .presets import PRESETS
-from .shaping import PathDistanceShaper
+from .shaping import PathDistanceShaper, TurnSpeedPenalty
 from .targets import patch_intersection_targets
 
 
@@ -91,7 +100,8 @@ class CarNav(embodied.Env):
 
   def __init__(self, task='plain', seed=None, split_blocks=True,
                reward_scale=1.0, path_shaping=False,
-               intersection_targets=False, **kwargs):
+               intersection_targets=False, turn_penalty=0.0,
+               turn_penalty_threshold=0.0, **kwargs):
     if task not in PRESETS:
       raise KeyError(f'unknown carnav task {task!r}; one of {sorted(PRESETS)}')
     settings = dict(PRESETS[task])
@@ -99,9 +109,13 @@ class CarNav(embodied.Env):
     raw = carnav.make(obs_type='vector', seed=seed, **settings)
     if intersection_targets:
       patch_intersection_targets(raw)
-    self._env = (
-        RewardOverrideWrapper(raw, PathDistanceShaper(raw))
-        if path_shaping else raw)
+    env = raw
+    if path_shaping:
+      env = RewardOverrideWrapper(env, PathDistanceShaper(raw))
+    if turn_penalty:
+      env = RewardOverrideWrapper(
+          env, TurnSpeedPenalty(raw, weight=turn_penalty, threshold=turn_penalty_threshold))
+    self._env = env
     # Multiplies the reward the agent sees; the env's own bookkeeping
     # (info['episode_reward'], the log/ scalars) is untouched. 1.0 is the
     # default and the claim under test: DreamerV3's symlog two-hot heads and

@@ -129,3 +129,54 @@ class PathDistanceShaper:
             return None      # nearest node isn't connected to the target's component; skip rather than lie
         last_mile = float(np.hypot(nodes[idx, 0] - x, nodes[idx, 1] - y))
         return graph_dist + last_mile
+
+
+class TurnSpeedPenalty:
+    """Discourages sharp turns taken at speed.
+
+    The base reward has no comfort or lane-keeping term at all (INTEGRATION.md,
+    "Reward": "no lane-keeping term, no comfort term, no speed term"), so
+    nothing pushes back on cutting a corner fast except the crash penalty
+    itself, and that only fires after the car has actually hit something.
+    A checkpoint trained long enough to fully exploit this gap learns to
+    drive well above the scripted baseline's cruise speed and take corners
+    hard, which is invisible to `crash_building`'s aggregate rate (a near
+    miss doesn't set the flag) but is exactly the behaviour a human watching
+    a rollout notices immediately.
+
+    Penalises `|yaw_rate|` directly rather than speed and steer angle as two
+    separate terms, because `yaw_rate = v * cos(slip) * tan(steer_angle) /
+    wheelbase` (`env/car.py::Car.step`) already couples them the way the
+    physics does: full steering lock at a standstill gives yaw_rate ~ 0 and
+    isn't penalised, the same lock at speed is. This mirrors the (normalised)
+    `dynamics[1]` observation channel -- INTEGRATION.md divides yaw_rate by 2
+    there for the same reason it's the natural unit here. Reads `env.car`
+    directly, the same way `PathDistanceShaper` reads `env.city`: this sits
+    below the `CarNav` adapter, wrapping the raw `CarNavEnv`.
+
+    Stateless and purely additive -- unlike `PathDistanceShaper` it does not
+    replace any existing reward component, so it composes with path_shaping
+    (or without it) by wrapping whatever reward it's handed.
+
+    `threshold` (default 0.0) makes the penalty apply to *excess* yaw_rate
+    above that value rather than to any nonzero amount. This matters because
+    a linear-from-zero penalty (threshold=0) taxes *all* turning, including
+    the ordinary cornering needed to follow the road -- and with
+    `intersection_targets` on, waypoints sit at intersections, so reaching
+    one requires turning. A first attempt at threshold=0, weight=0.3,
+    combined with a lowered `time_penalty`, was observed collapsing the
+    policy to near-zero speed rather than driving more carefully: removing
+    the time pressure to hurry while also taxing the only maneuver that
+    makes progress left "don't bother" less penalised than actually
+    navigating. A nonzero threshold exempts normal-speed cornering and only
+    taxes yaw_rate beyond it.
+    """
+
+    def __init__(self, env, weight=0.3, threshold=0.0):
+        self.env = env
+        self.weight = weight
+        self.threshold = threshold
+
+    def __call__(self, obs, action, reward, terminated, truncated, info):
+        excess = max(0.0, abs(self.env.car.yaw_rate) - self.threshold)
+        return reward - self.weight * excess

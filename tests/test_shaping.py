@@ -24,7 +24,7 @@ import pytest
 import carnav
 from carnav_dreamer.env import CarNav
 from carnav_dreamer.presets import PRESETS
-from carnav_dreamer.shaping import PathDistanceShaper
+from carnav_dreamer.shaping import PathDistanceShaper, TurnSpeedPenalty
 from wrappers import RewardOverrideWrapper
 
 A, B, C, D = (0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)
@@ -195,3 +195,93 @@ def test_scripts_evaluate_style_env_ignores_path_shaping_kwarg():
   about it, confirming the flag lives entirely in our adapter."""
   with pytest.raises(TypeError):
     carnav.make(path_shaping=True, **PRESETS['plain'])
+
+
+# --------------------------------------------------------- TurnSpeedPenalty
+
+class FakeCar:
+  def __init__(self, yaw_rate):
+    self.yaw_rate = yaw_rate
+
+
+class FakeCarEnv:
+  def __init__(self, yaw_rate):
+    self.car = FakeCar(yaw_rate)
+
+
+def test_zero_weight_is_a_noop():
+  penalty = TurnSpeedPenalty(FakeCarEnv(yaw_rate=5.0), weight=0.0)
+  assert penalty(None, None, reward=1.23, terminated=False, truncated=False, info={}) == 1.23
+
+
+def test_linear_penalty_at_threshold_zero():
+  """threshold=0 (the first, blunt attempt) taxes any nonzero yaw_rate."""
+  penalty = TurnSpeedPenalty(FakeCarEnv(yaw_rate=0.5), weight=0.3, threshold=0.0)
+  out = penalty(None, None, reward=1.0, terminated=False, truncated=False, info={})
+  assert out == pytest.approx(1.0 - 0.3 * 0.5)
+
+
+def test_threshold_exempts_yaw_rate_below_it():
+  """Below the threshold -- normal-speed cornering, per the scripted
+  baseline's own yaw_rate distribution -- there is no penalty at all."""
+  penalty = TurnSpeedPenalty(FakeCarEnv(yaw_rate=0.8), weight=0.3, threshold=1.0)
+  assert penalty(None, None, reward=1.0, terminated=False, truncated=False, info={}) == pytest.approx(1.0)
+
+
+def test_threshold_taxes_only_the_excess():
+  penalty = TurnSpeedPenalty(FakeCarEnv(yaw_rate=1.5), weight=0.3, threshold=1.0)
+  out = penalty(None, None, reward=1.0, terminated=False, truncated=False, info={})
+  assert out == pytest.approx(1.0 - 0.3 * (1.5 - 1.0))   # excess is 0.5, not 1.5
+
+
+def test_penalises_the_magnitude_not_the_sign():
+  left = TurnSpeedPenalty(FakeCarEnv(yaw_rate=-1.5), weight=0.3, threshold=1.0)
+  right = TurnSpeedPenalty(FakeCarEnv(yaw_rate=1.5), weight=0.3, threshold=1.0)
+  a = left(None, None, reward=1.0, terminated=False, truncated=False, info={})
+  b = right(None, None, reward=1.0, terminated=False, truncated=False, info={})
+  assert a == pytest.approx(b)
+
+
+def test_wired_into_carnav_via_turn_penalty_flag():
+  """End to end, same discipline as the path_shaping test above: turning it
+  on changes obs['reward'] relative to the same seed/actions with it off,
+  and never changes dynamics, obs, or endings."""
+  actions = np.random.default_rng(0).uniform(-1, 1, size=(80, 3)).astype(np.float32)
+
+  def drive(**kw):
+    env = CarNav('plain', seed=42, width=48, height=48, **kw)
+    out = [env.step({'action': np.zeros(3, np.float32), 'reset': True})]
+    for a in actions:
+      out.append(env.step({'action': a, 'reset': False}))
+    return out
+
+  off = drive(turn_penalty=0.0)
+  on = drive(turn_penalty=0.3, turn_penalty_threshold=0.0)
+  for u, s in zip(off, on):
+    for k in u:
+      if k == 'reward':
+        continue
+      np.testing.assert_array_equal(u[k], s[k], err_msg=k)
+  rewards_differ = any(
+      abs(u['reward'] - s['reward']) > 1e-6 for u, s in zip(off, on))
+  assert rewards_differ, 'turn_penalty=0.3 produced identical rewards to 0.0'
+
+
+def test_turn_penalty_composes_with_path_shaping():
+  """Both flags on at once must not crash and must still differ from
+  neither flag -- they wrap in sequence (path_shaping innermost), not
+  mutually exclusively."""
+  actions = np.random.default_rng(1).uniform(-1, 1, size=(40, 3)).astype(np.float32)
+
+  def drive(**kw):
+    env = CarNav('plain', seed=7, width=48, height=48, **kw)
+    out = [env.step({'action': np.zeros(3, np.float32), 'reset': True})]
+    for a in actions:
+      out.append(env.step({'action': a, 'reset': False}))
+    return out
+
+  neither = drive(path_shaping=False, turn_penalty=0.0)
+  both = drive(path_shaping=True, turn_penalty=0.3, turn_penalty_threshold=0.0)
+  rewards_differ = any(
+      abs(u['reward'] - s['reward']) > 1e-6 for u, s in zip(neither, both))
+  assert rewards_differ
