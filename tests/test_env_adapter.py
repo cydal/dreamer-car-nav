@@ -157,7 +157,7 @@ def test_speed_log_matches_info():
   env.step({'action': np.zeros(3, np.float32), 'reset': True})
   o = None
   for _ in range(10):
-    o = env.step({'action': np.array([0.8, 0.0, 0.0], np.float32), 'reset': False})
+    o = env.step({'action': np.array([0.8, -1.0, 0.0], np.float32), 'reset': False})
     assert o['log/speed'] == np.float32(env.info['speed'])
   assert o['log/speed'] > 0.0   # accelerating forward for 10 steps actually moved it
 
